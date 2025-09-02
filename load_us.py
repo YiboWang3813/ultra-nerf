@@ -59,7 +59,7 @@ def _minify(basedir, factors=[], resolutions=[]):
 
 def _load_data(basedir):
     # poses are 4x4 [R T] matrices
-    poses = np.load(os.path.join(basedir, 'poses.npy'))
+    poses = np.load(os.path.join(basedir, 'poses.npy'))  # (N, 4, 4)
 
     sfx = ''
 
@@ -79,13 +79,13 @@ def _load_data(basedir):
 
     def imread(f):
         if f.endswith('png'):
-            return imageio.imread(f, ignoregamma=True)
+            return imageio.imread(f, ignoregamma=True)  # 避免png文件中的gamma信息影响像素值
         else:
             return imageio.imread(f)
 
     imgs = imgs = [imread(f) / 255. for f in imgfiles]
-    imgs = np.stack(imgs)
-    poses[:, :3, 3] *= 0.001
+    imgs = np.stack(imgs)  # (N, H, W)
+    poses[:, :3, 3] *= 0.001  # 将平移分量从毫米缩放到米 保证坐标系单位一致 避免数值过大或过小出现问题
     print('Loaded image data', imgs.shape, poses.shape)
     return poses, imgs
 
@@ -95,11 +95,11 @@ def normalize(x):
 
 
 def viewmatrix(z, up, pos):
-    vec2 = normalize(z)
-    vec1_avg = up
-    vec0 = normalize(np.cross(vec1_avg, vec2))
-    vec1 = normalize(np.cross(vec2, vec0))
-    m = np.stack([vec0, vec1, vec2, pos], 1)
+    vec2 = normalize(z)  # 前向方向z (3,)
+    vec1_avg = up  # 上方向 没归一化 (3,)
+    vec0 = normalize(np.cross(vec1_avg, vec2))  # x积 得到右方向x (3,)
+    vec1 = normalize(np.cross(vec2, vec0))  # x积 修正上方向y (3,)
+    m = np.stack([vec0, vec1, vec2, pos], 1)  # 拼接 [x | y | z | t] (3, 4)
     return m
 
 
@@ -109,12 +109,12 @@ def ptstocam(pts, c2w):
 
 
 def poses_avg(poses):
-    hwf = poses[0, :3, -1:]
+    hwf = poses[0, :3, -1:]  # 取第一帧相机pose的最后一列 作为平均相机的内参 (3, 1)
 
-    center = poses[:, :3, 3].mean(0)
-    vec2 = normalize(poses[:, :3, 2].sum(0))
-    up = poses[:, :3, 1].sum(0)
-    c2w = np.concatenate([viewmatrix(vec2, up, center), hwf], 1)
+    center = poses[:, :3, 3].mean(0)  # 对所有相机的平移分量T取平均 得到相机位置的中心点 (3,)
+    vec2 = normalize(poses[:, :3, 2].sum(0))  # 对所有相机的z轴相加再归一化 得到平均的前向方向 (3,)
+    up = poses[:, :3, 1].sum(0)  # 对所有相机的y轴相加 得到一个大致的up分量 (3,)
+    c2w = np.concatenate([viewmatrix(vec2, up, center), hwf], 1)  # 拼接平均中心矩阵 + hwf矩阵 (3, 5)
 
     return c2w
 
@@ -215,11 +215,12 @@ def load_us_data(basedir):
     print('Data:')
     print(poses.shape, images.shape, )
 
+    # 所有pose和平均pose的中心位置做差再平方得到距离 找到最小距离所在的索引
     dists = np.sum(np.square(c2w[:3, 3] - poses[:, :3, 3]), -1)
-    i_test = np.argmin(dists)
+    i_test = np.argmin(dists)  # int
     print('HOLDOUT view is', i_test)
 
-    images = images.astype(np.float32)
-    poses = poses.astype(np.float32)
+    images = images.astype(np.float32)  # (N, H, W)
+    poses = poses.astype(np.float32)  # (N, 4, 4)
 
     return images, poses, i_test

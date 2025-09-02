@@ -303,8 +303,7 @@ def create_nerf(args):
     input_ch_views = 0
     embeddirs_fn = None
     if args.use_viewdirs:
-        embeddirs_fn, input_ch_views = get_embedder(
-            args.multires_views, args.i_embed)
+        embeddirs_fn, input_ch_views = get_embedder(args.multires_views, args.i_embed)
     output_ch = args.output_ch
     skips = [4]
 
@@ -481,11 +480,11 @@ def train():
         images, poses, i_test = load_us_data(args.datadir)
 
         if not isinstance(i_test, list):
-            i_test = [i_test]
+            i_test = [i_test]  # [i_test]
 
         i_val = i_test
         i_train = np.array([i for i in np.arange(int(images.shape[0])) if
-                            (i not in i_test and i not in i_val)])
+                            (i not in i_test and i not in i_val)])  # [0, 1, ..., 151]除了i_test
 
         print("Test {}, train {}".format(len(i_test), len(i_train)))
 
@@ -525,8 +524,7 @@ def train():
             file.write(open(args.config, 'r').read())
 
     # Create nerf model
-    render_kwargs_train, render_kwargs_test, start, grad_vars, models = create_nerf(
-        args)
+    render_kwargs_train, render_kwargs_test, start, grad_vars, models = create_nerf(args)
 
     bds_dict = {
         'near': tf.cast(near, tf.float32),

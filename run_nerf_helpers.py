@@ -68,10 +68,8 @@ class Embedder:
                     out_dim += d
                     out_dim += B.shape[1]
                 else:
-                    embed_fns.append(lambda x, p_fn=p_fn,
-                                            freq=freq,: p_fn(x * freq))
+                    embed_fns.append(lambda x, p_fn=p_fn, freq=freq, : p_fn(x * freq))
                     out_dim += d
-
 
         self.embed_fns = embed_fns
         self.out_dim = out_dim
@@ -100,7 +98,7 @@ def get_embedder(multires, i=0, b=0):
         'B': B
     }
     embedder_obj = Embedder(**embed_kwargs)
-    def embed(x, eo=embedder_obj): return eo.embed(x)
+    def embed(x, eo=embedder_obj): return eo.embed(x)  # 作用就是把输入x的通道从3改成63
     return embed, embedder_obj.out_dim
 
 
@@ -114,8 +112,7 @@ def init_nerf_model(D=8, W=256, input_ch=3, input_ch_views=3, output_ch=6, skips
     #                                                     bias_initializer=tf.keras.initializers.RandomNormal(mean=-0.0, stddev=1.),
     #                                                     kernel_initializer=tf.keras.initializers.RandomNormal(mean=-0.0, stddev=1.))
 
-    print('MODEL', input_ch, input_ch_views, type(
-        input_ch), type(input_ch_views), use_viewdirs)
+    print('MODEL', input_ch, input_ch_views, type(input_ch), type(input_ch_views), use_viewdirs)
     input_ch = int(input_ch)
     input_ch_views = int(input_ch_views)
 
@@ -133,12 +130,10 @@ def init_nerf_model(D=8, W=256, input_ch=3, input_ch_views=3, output_ch=6, skips
         if i in skips:
             outputs = tf.concat([inputs_pts, outputs], -1)
 
-
     if use_viewdirs:
         alpha_out = dense(1, act=None)(outputs)
         bottleneck = dense(256, act=None)(outputs)
-        inputs_viewdirs = tf.concat(
-            [bottleneck, inputs_views], -1)
+        inputs_viewdirs = tf.concat([bottleneck, inputs_views], -1)
         outputs = inputs_viewdirs
         for i in range(4):
             outputs = dense(W//2)(outputs)
