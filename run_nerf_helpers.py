@@ -150,21 +150,26 @@ def init_nerf_model(D=8, W=256, input_ch=3, input_ch_views=3, output_ch=6, skips
 
 # Ray helpers
 def get_rays_us_linear(H, W, sw, sh, c2w):
-    t = c2w[:3, -1]
-    R = c2w[:3, :3]
-    x = tf.range(-W/2, W/2, dtype=tf.float32) * sw
+    """ 根据图像大小H和W 缩放因子sw和sh 相机位姿矩阵得到光线rays在世界坐标系中的原点和方向 """
+    t = c2w[:3, -1]  # 平移分量 (3,)
+    R = c2w[:3, :3]  # 旋转矩阵 (3, 3) 
+
+    # 射线原点rays_o沿x轴线性排列 通过R和t转换到世界坐标系 
+    x = tf.range(-W/2, W/2, dtype=tf.float32) * sw  # 像素转米 (W,)
     y = tf.zeros_like(x)
     z = tf.zeros_like(x)
-
-    origin_base = tf.stack([x, y, z], axis=1)
+    origin_base = tf.stack([x, y, z], axis=1)  # (W, 3)
+    # 以下的3行可以用一行代替 
+    # ray_o_rotated = tf.matvec(R, origin_base) 
     origin_base_prim = origin_base[..., None, :]
     origin_rotated = R * origin_base_prim
     ray_o_r = tf.reduce_sum(origin_rotated, axis=-1)
-    rays_o = ray_o_r + t
+    rays_o = ray_o_r + t  # (W, 3)
 
-    dirs_base = tf.constant([0., 1., 0.])
-    dirs_r = tf.linalg.matvec(R, dirs_base)
-    rays_d = tf.broadcast_to(dirs_r, rays_o.shape)
+    # 射线方向rays_d统一沿着y轴向前 通过R转换到世界坐标系
+    dirs_base = tf.constant([0., 1., 0.])  # (3,)
+    dirs_r = tf.linalg.matvec(R, dirs_base)  # (3,)
+    rays_d = tf.broadcast_to(dirs_r, rays_o.shape)  # (W, 3)
 
     return rays_o, rays_d
 

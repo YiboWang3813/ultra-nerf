@@ -73,12 +73,12 @@ def render_method_convolutional_ultrasound(raw, z_vals, args):
 
     # Compute distance between points
     # In paper the points are sampled equidistantly
-    dists = tf.math.abs(z_vals[..., :-1, None] - z_vals[..., 1:, None])
-    dists = tf.squeeze(dists)
-    dists = tf.concat([dists, dists[:, -1, None]], axis=-1)
+    dists = tf.math.abs(z_vals[..., :-1, None] - z_vals[..., 1:, None])  # (N_rays, N_samples-1, 1)
+    dists = tf.squeeze(dists)  # (N_rays, N_samples-1)
+    dists = tf.concat([dists, dists[:, -1, None]], axis=-1)  # (N_rays, N_samples) 最后一位的距离补充
     # ATTENUATION
     # Predict attenuation coefficient for each sampled point. This value is positive.
-    attenuation_coeff = tf.math.abs(raw[..., 0])
+    attenuation_coeff = tf.math.abs(raw[..., 0])  # 衰减系数在5个中的第1个 (N_rays, N_samples) 
     attenuation = raw2attenualtion(attenuation_coeff, dists)
     # Compute total attenuation at each pixel location as exp{-sum[a_n*d_n]}
     attenuation_transmission = tf.math.cumprod(attenuation, axis=1, exclusive=True)
@@ -145,7 +145,7 @@ def render_method_convolutional_ultrasound(raw, z_vals, args):
 def render_rays_us(ray_batch,
                    network_fn,
                    network_query_fn,
-                   N_samples,
+                   N_samples,  # number of coarse points per a ray
                    retraw=False,
                    lindisp=False,
                    args=None):
@@ -169,38 +169,37 @@ def render_rays_us(ray_batch,
     N_rays = ray_batch.shape[0]
 
     # Extract ray origin, direction.
-    rays_o, rays_d = ray_batch[:, 0:3], ray_batch[:, 3:6]  # [N_rays, 3] each
+    rays_o, rays_d = ray_batch[:, 0:3], ray_batch[:, 3:6]  # (N_rays, 3), (N_rays, 3)
 
     # Extract unit-normalized viewing direction.
     viewdirs = ray_batch[:, -3:] if ray_batch.shape[-1] > 8 else None
 
     # Extract lower, upper bound for ray distance.
-    bounds = tf.reshape(ray_batch[..., 6:8], [-1, 1, 2])
-    near, far = bounds[..., 0], bounds[..., 1]  # [-1,1]
+    bounds = tf.reshape(ray_batch[..., 6:8], [-1, 1, 2])  # (N_rays, 1, 2)
+    near, far = bounds[..., 0], bounds[..., 1]  # (N_rays, 1), (N_rays, 1)
 
     # Decide where to sample along each ray. Under the logic, all rays will be sampled at
     # the same times.
-    t_vals = tf.linspace(0., 1., N_samples)
+    t_vals = tf.linspace(0., 1., N_samples)  # (N_samples,) 
     if not lindisp:
         # Space integration times linearly between 'near' and 'far'. Same
         # integration points will be used for all rays.
-        z_vals = near * (1. - t_vals) + far * (t_vals)
+        z_vals = near * (1. - t_vals) + far * (t_vals)  # (N_samples, 1)
     else:
         # Sample linearly in inverse depth (disparity).
         z_vals = 1. / (1. / near * (1. - t_vals) + 1. / far * (t_vals))
-    z_vals = tf.broadcast_to(z_vals, [N_rays, N_samples])
+    z_vals = tf.broadcast_to(z_vals, [N_rays, N_samples])  # (N_rays, N_samples)
 
     # Points in space to evaluate model at.
-    origin = rays_o[..., None, :]
-    step = rays_d[..., None, :] * \
-           z_vals[..., :, None]
+    origin = rays_o[..., None, :]  # (N_rays, 1, 3)
+    # 这句有点像R乘一个位置点矩阵 实现在世界坐标系中的旋转那种
+    step = rays_d[..., None, :] * z_vals[..., :, None]  # (N_rays, 1, 3) @ (N_rays, N_samples, 1) = (N_rays, N_samples, 3)
 
-    pts = step + origin
+    pts = step + origin  # (N_rays, N_samples, 3)
 
     # Evaluate model at each point.
-    raw = network_query_fn(pts, network_fn)  # [N_rays, N_samples, 5]
-    ret = raw2outputs(
-        raw, z_vals, rays_d)
+    raw = network_query_fn(pts, network_fn)  # (N_rays, N_samples, 5)
+    ret = raw2outputs(raw, z_vals, rays_d)
 
     if retraw:
         ret['raw'] = raw
@@ -242,13 +241,13 @@ def render_us(H, W, sw, sh,
     sh = rays_d.shape  # [..., 3]
 
     # Create ray batch
-    rays_o = tf.cast(tf.reshape(rays_o, [-1, 3]), dtype=tf.float32)
-    rays_d = tf.cast(tf.reshape(rays_d, [-1, 3]), dtype=tf.float32)
-    near, far = near * \
-                tf.ones_like(rays_d[..., :1]), far * tf.ones_like(rays_d[..., :1])
+    rays_o = tf.cast(tf.reshape(rays_o, [-1, 3]), dtype=tf.float32)  # (W, 3)
+    rays_d = tf.cast(tf.reshape(rays_d, [-1, 3]), dtype=tf.float32)  # (W, 3)
+    near = near * tf.ones_like(rays_d[..., :1])  # (W, 1)
+    far = far * tf.ones_like(rays_d[..., :1])  # (W, 1)
 
     # (ray origin, ray direction, min dist, max dist) for each ray
-    rays = tf.concat([rays_o, rays_d, near, far], axis=-1)
+    rays = tf.concat([rays_o, rays_d, near, far], axis=-1)  # (W, 8)
 
     # Render and reshape
     all_ret = batchify_rays(rays, c2w=c2w, chunk=chunk, **kwargs)
@@ -560,16 +559,16 @@ def train():
         # Random from one image
         img_i = np.random.choice(i_train)
         try:
-            target = tf.transpose(images[img_i])
+            target = tf.transpose(images[img_i])  # (W, H)
         except:
             print(img_i)
 
-        pose = poses[img_i, :3, :4]
+        pose = poses[img_i, :3, :4]  # (3, 4)
         ssim_weight = args.ssim_lambda
         l2_weight = 1. - ssim_weight
 
         rays_o, rays_d = get_rays_us_linear(H, W, sw, sh, pose)
-        batch_rays = tf.stack([rays_o, rays_d], 0)
+        batch_rays = tf.stack([rays_o, rays_d], 0)  # (2, W, 3)
         loss = dict()
         loss_holdout = dict()
         #####  Core optimization loop  #####
